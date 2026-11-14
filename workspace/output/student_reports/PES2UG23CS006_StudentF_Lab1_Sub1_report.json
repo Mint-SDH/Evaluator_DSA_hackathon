@@ -1,0 +1,68 @@
+{
+  "student_name": "PES2UG23CS006_StudentF",
+  "lab_number": "Lab1",
+  "submission_time": "14-11-2026 20:05",
+  "zip_filename": "PES2UG23CS006_StudentF_Lab1_Sub1.zip",
+  "problem_id": "WordFrequencyTrie",
+  "compiled": true,
+  "compilation_error": null,
+  "total_score": 0.0,
+  "max_score": 100.0,
+  "percentage": 0.0,
+  "tests_passed": 0,
+  "total_tests": 4,
+  "results": [
+    {
+      "test_case_id": "1",
+      "test_case_name": "Betty Botter Tongue Twister (Default Input)",
+      "verdict": "Runtime Error (Runtime Error (Segmentation Fault / Access Violation [0xC0000005]))",
+      "passed": false,
+      "score": 0.0,
+      "max_score": 25.0,
+      "execution_time_ms": 388,
+      "actual_stdout": "",
+      "expected_stdout": "word : better count : 2\nword : betty count : 2\nword : bitter count : 2\nword : botter count : 2\nword : bought count : 2\nword : but count : 1\nword : butter count : 4\nword : make count : 1\nword : some count : 2\nword : the count : 2\nword : to count : 1\nword : was count : 1\n",
+      "stderr": "",
+      "error_message": "Runtime Error (Segmentation Fault / Access Violation [0xC0000005])"
+    },
+    {
+      "test_case_id": "2",
+      "test_case_name": "Case Insensitivity and Duplicate Counting",
+      "verdict": "Runtime Error (Runtime Error (Segmentation Fault / Access Violation [0xC0000005]))",
+      "passed": false,
+      "score": 0.0,
+      "max_score": 25.0,
+      "execution_time_ms": 47,
+      "actual_stdout": "",
+      "expected_stdout": "word : apple count : 3\nword : banana count : 2\nword : orange count : 1\n",
+      "stderr": "",
+      "error_message": "Runtime Error (Segmentation Fault / Access Violation [0xC0000005])"
+    },
+    {
+      "test_case_id": "3",
+      "test_case_name": "Shared Prefix Ordering in Trie",
+      "verdict": "Runtime Error (Runtime Error (Segmentation Fault / Access Violation [0xC0000005]))",
+      "passed": false,
+      "score": 0.0,
+      "max_score": 25.0,
+      "execution_time_ms": 55,
+      "actual_stdout": "",
+      "expected_stdout": "word : trie count : 2\nword : tried count : 2\nword : try count : 2\nword : trying count : 1\n",
+      "stderr": "",
+      "error_message": "Runtime Error (Segmentation Fault / Access Violation [0xC0000005])"
+    },
+    {
+      "test_case_id": "4",
+      "test_case_name": "Single Word Repetition Stress Check",
+      "verdict": "Runtime Error (Runtime Error (Segmentation Fault / Access Violation [0xC0000005]))",
+      "passed": false,
+      "score": 0.0,
+      "max_score": 25.0,
+      "execution_time_ms": 58,
+      "actual_stdout": "",
+      "expected_stdout": "word : pes count : 5\n",
+      "stderr": "",
+      "error_message": "Runtime Error (Segmentation Fault / Access Violation [0xC0000005])"
+    }
+  ]
+}
