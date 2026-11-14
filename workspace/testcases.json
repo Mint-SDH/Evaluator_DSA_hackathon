@@ -1,6 +1,6 @@
 {
   "problem_id": "WordFrequencyTrie",
-  "lab_number": "Lab1",
+  "lab_number": "Lab2",
   "time_limit_ms": 2000,
   "command_args": [
     "input1.txt"

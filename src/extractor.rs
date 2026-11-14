@@ -17,7 +17,7 @@ pub struct ExtractedSubmission {
 pub fn extract_submission(
     zip_path: &Path,
     sandbox_dir: &Path,
-    default_lab: Option<&str>,
+    resolved_base_lab: Option<&str>,
 ) -> io::Result<ExtractedSubmission> {
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(BufReader::new(file))?;
@@ -32,12 +32,17 @@ pub fn extract_submission(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
-    // 1. Extract metadata
+    // 1. Extract metadata with strict 4-tier lab_number resolution priority:
+    // Priority 1: Explicit CLI Override (passed via resolved_base_lab)
+    // Priority 2: testcases.json field (passed via resolved_base_lab)
+    // Priority 3: Filename parsing fallback (Lab<N> token in filename)
+    // Priority 4: Final fallback "Unknown_Lab"
     let (student_name, detected_lab) = parse_name_and_lab(&stem);
-    let lab_number = default_lab
-        .map(|l| l.to_string())
-        .or(detected_lab)
-        .unwrap_or_else(|| "Lab".to_string());
+    let lab_number = resolved_base_lab
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+        .or_else(|| detected_lab.filter(|s| !s.trim().is_empty()))
+        .unwrap_or_else(|| "Unknown_Lab".to_string());
 
     let submission_time = extract_submission_timestamp(&mut archive, zip_path);
 
@@ -111,16 +116,56 @@ pub fn extract_submission(
     })
 }
 
+/// Resolves the lab number following the strict 4-tier priority order:
+/// 1. Priority 1 (Explicit CLI Override): CLI `--lab <VALUE>` if non-empty
+/// 2. Priority 2 (testcases.json Field): `test_suite.lab_number` if non-empty
+/// 3. Priority 3 (Filename Parsing Fallback): `Lab<N>` token from zip stem
+/// 4. Priority 4 (Final Fallback): "Unknown_Lab"
+pub fn resolve_lab_number(
+    cli_lab: Option<&str>,
+    json_lab: Option<&str>,
+    zip_stem: &str,
+) -> String {
+    // Priority 1: Explicit CLI Override
+    if let Some(lab) = cli_lab {
+        let trimmed = lab.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    // Priority 2: testcases.json Field (Primary Automatic Source)
+    if let Some(lab) = json_lab {
+        let trimmed = lab.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    // Priority 3: Filename Parsing Fallback (e.g. Lab1 / Lab2 in stem)
+    let (_, detected_lab) = parse_name_and_lab(zip_stem);
+    if let Some(lab) = detected_lab {
+        let trimmed = lab.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    // Priority 4: Final Fallback
+    "Unknown_Lab".to_string()
+}
+
 /// Parses the student name and lab identifier from the submission zip filename stem.
 /// Example: PES2UG23CS001_StudentA_Lab1_Sub1 -> (PES2UG23CS001_StudentA, Some("Lab1"))
-fn parse_name_and_lab(stem: &str) -> (String, Option<String>) {
+pub fn parse_name_and_lab(stem: &str) -> (String, Option<String>) {
     let parts: Vec<&str> = stem.split('_').collect();
     let mut name_parts = Vec::new();
     let mut detected_lab = None;
 
     for part in parts {
         let lower = part.to_ascii_lowercase();
-        if lower.starts_with("lab") && lower.len() > 3 && lower[3..].chars().all(|c| c.is_ascii_digit()) {
+        let trimmed_digits = lower.trim_start_matches("lab").trim_start_matches(['-', '_']);
+        if lower.starts_with("lab") && !trimmed_digits.is_empty() && trimmed_digits.chars().all(|c| c.is_ascii_digit()) {
             detected_lab = Some(part.to_string());
         } else if lower.starts_with("sub") || lower.starts_with("attempt") {
             // Skip submission attempt suffix from the student name

@@ -45,18 +45,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut test_suite: TestSuite = serde_json::from_reader(testcases_file)
         .map_err(|e| format!("Failed to parse test suite JSON: {e}"))?;
 
-    // Apply CLI lab override if specified
-    if let Some(ref lab_override) = cli.lab {
-        test_suite.lab_number = Some(lab_override.clone());
-    }
+    // Enforce strict lab_number resolution:
+    // Priority 1 (Explicit CLI Override): User passed `--lab <VALUE>`
+    // Priority 2 (testcases.json Field): `test_suite.lab_number` directly from JSON
+    let cli_override = cli
+        .lab
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let json_lab = test_suite
+        .lab_number
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let resolved_base_lab = cli_override.or(json_lab);
+    test_suite.lab_number = resolved_base_lab.clone();
 
     let problem_id = test_suite.problem_id.clone();
-    let lab_override = test_suite.lab_number.clone();
+    let display_lab = resolved_base_lab.as_deref().unwrap_or("Inferred from Submissions");
     let total_tests_count = test_suite.test_cases.len();
 
     println!("Loaded Test Suite:");
     println!("  Problem ID:  {}", problem_id);
-    println!("  Lab Number:  {}", lab_override.as_deref().unwrap_or("Default"));
+    println!("  Lab Number:  {}", display_lab);
     println!("  Test Cases:  {}", total_tests_count);
     println!("  Time Limit:  {} ms", test_suite.time_limit_ms.unwrap_or(2000));
     println!("  Zips Dir:    {}", cli.zips_dir.display());
@@ -128,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &sandbox_dir,
                 output_dir,
                 &test_suite,
-                lab_override.as_deref(),
+                resolved_base_lab.as_deref(),
             );
 
             pb.inc(1);
@@ -188,10 +202,10 @@ fn evaluate_single_submission(
     sandbox_dir: &Path,
     output_dir: &Path,
     test_suite: &TestSuite,
-    lab_override: Option<&str>,
+    base_lab: Option<&str>,
 ) -> MasterSummaryRow {
-    // 1. Read-only extraction into sandbox
-    let extraction_res = extractor::extract_submission(zip_path, sandbox_dir, lab_override);
+    // 1. Read-only extraction into sandbox (enforces 4-tier lab_number resolution)
+    let extraction_res = extractor::extract_submission(zip_path, sandbox_dir, base_lab);
 
     let extracted = match extraction_res {
         Ok(ext) => ext,
@@ -200,9 +214,10 @@ fn evaluate_single_submission(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown.zip".to_string());
+            let fallback_lab = extractor::resolve_lab_number(base_lab, None, zip_stem);
             return MasterSummaryRow {
                 student_name: zip_stem.to_string(),
-                lab_number: lab_override.unwrap_or("Lab").to_string(),
+                lab_number: fallback_lab,
                 submission_time: "N/A".to_string(),
                 zip_filename: filename,
                 status: "EXTRACTION_FAILED".to_string(),

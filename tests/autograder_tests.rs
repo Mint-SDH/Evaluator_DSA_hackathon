@@ -22,6 +22,41 @@ fn test_executable_name() {
 }
 
 #[test]
+fn test_lab_number_resolution_priority() {
+    // Priority 1: CLI Override takes absolute precedence over JSON and filename
+    let lab_p1 = extractor::resolve_lab_number(
+        Some("LabOverride"),
+        Some("Lab2"),
+        "PES2UG23CS001_StudentA_Lab1_Sub1",
+    );
+    assert_eq!(lab_p1, "LabOverride");
+
+    // Priority 2: testcases.json field takes precedence over filename when CLI is omitted
+    let lab_p2 = extractor::resolve_lab_number(
+        None,
+        Some("Lab2"),
+        "PES2UG23CS001_StudentA_Lab1_Sub1",
+    );
+    assert_eq!(lab_p2, "Lab2");
+
+    // Priority 3: Filename parsing when both CLI and JSON are empty/omitted
+    let lab_p3 = extractor::resolve_lab_number(
+        None,
+        None,
+        "PES2UG23CS001_StudentA_Lab3_Sub1",
+    );
+    assert_eq!(lab_p3, "Lab3");
+
+    // Priority 4: Final fallback "Unknown_Lab" when no source provides a lab
+    let lab_p4 = extractor::resolve_lab_number(
+        None,
+        None,
+        "PES2UG23CS001_StudentA",
+    );
+    assert_eq!(lab_p4, "Unknown_Lab");
+}
+
+#[test]
 fn test_normalize_output() {
     let raw_windows = "Hello World  \r\nLine 2 \t\r\n\r\n";
     let raw_linux = "Hello World\nLine 2\n\n";

@@ -1,11 +1,11 @@
 {
   "student_name": "PES2UG23CS004_StudentD",
-  "lab_number": "Lab1",
+  "lab_number": "LabSpecial",
   "submission_time": "14-11-2026 20:05",
   "zip_filename": "PES2UG23CS004_StudentD_Lab1_Sub1.zip",
   "problem_id": "WordFrequencyTrie",
   "compiled": false,
-  "compilation_error": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccmhwXYf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
+  "compilation_error": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccqZ5SWf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
   "total_score": 0.0,
   "max_score": 100.0,
   "percentage": 0.0,
@@ -22,7 +22,7 @@
       "execution_time_ms": 0,
       "actual_stdout": "",
       "expected_stdout": "word : better count : 2\nword : betty count : 2\nword : bitter count : 2\nword : botter count : 2\nword : bought count : 2\nword : but count : 1\nword : butter count : 4\nword : make count : 1\nword : some count : 2\nword : the count : 2\nword : to count : 1\nword : was count : 1\n",
-      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccmhwXYf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
+      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccqZ5SWf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
       "error_message": "Compilation failed"
     },
     {
@@ -35,7 +35,7 @@
       "execution_time_ms": 0,
       "actual_stdout": "",
       "expected_stdout": "word : apple count : 3\nword : banana count : 2\nword : orange count : 1\n",
-      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccmhwXYf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
+      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccqZ5SWf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
       "error_message": "Compilation failed"
     },
     {
@@ -48,7 +48,7 @@
       "execution_time_ms": 0,
       "actual_stdout": "",
       "expected_stdout": "word : trie count : 2\nword : tried count : 2\nword : try count : 2\nword : trying count : 1\n",
-      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccmhwXYf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
+      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccqZ5SWf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
       "error_message": "Compilation failed"
     },
     {
@@ -61,7 +61,7 @@
       "execution_time_ms": 0,
       "actual_stdout": "",
       "expected_stdout": "word : pes count : 5\n",
-      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccmhwXYf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
+      "stderr": "Compilation Failed:\n--- Stage 1 (Direct GCC) ---\nGCC exited with status exit code: 1.\nStderr:\nC:\\Users\\sanya\\AppData\\Local\\Temp\\ccqZ5SWf.o:process_text.c:(.text+0x27): undefined reference to `word_to_lower'\r\ncollect2.exe: error: ld returned 1 exit status\r\n\nStdout:\n\n--- Stage 2 (Makefile) ---\nCould not spawn 'make': program not found",
       "error_message": "Compilation failed"
     }
   ]
