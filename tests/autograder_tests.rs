@@ -282,6 +282,7 @@ fn test_reporting_json_and_csv() {
         lab_number: "Lab1".to_string(),
         submission_time: "14-11-2026 18:00".to_string(),
         zip_filename: "test.zip".to_string(),
+        section: Some("Section_A".to_string()),
         problem_id: "Prob1".to_string(),
         compiled: true,
         compilation_error: None,
@@ -293,14 +294,29 @@ fn test_reporting_json_and_csv() {
         results: vec![],
     };
 
-    let report_path = reporter::write_student_report(&output_dir, &report, "test_sub").unwrap();
+    let report_path = reporter::write_student_report(&output_dir, Some("Section_A"), &report, "test_sub").unwrap();
     assert!(report_path.exists());
+
+    // Test section-specific CSV generation
+    let sec_row = c_autograder::models::SectionSummaryRow {
+        student_name: "test_sub".to_string(),
+        total_test_cases: 4,
+        passed_test_cases: 3,
+        percentage_marks: 75,
+    };
+    let sec_csv_path = reporter::write_section_csv(&output_dir, "Section_A", &[sec_row]).unwrap();
+    assert!(sec_csv_path.exists());
+
+    let sec_csv_content = std::fs::read_to_string(sec_csv_path).unwrap();
+    assert!(sec_csv_content.contains("student_name,total_test_cases,passed_test_cases,percentage_marks"));
+    assert!(sec_csv_content.contains("test_sub,4,3,75"));
 
     let row = c_autograder::models::MasterSummaryRow {
         student_name: "TestStudent".to_string(),
         lab_number: "Lab1".to_string(),
         submission_time: "14-11-2026 18:00".to_string(),
         zip_filename: "test.zip".to_string(),
+        section: Some("Section_A".to_string()),
         status: "COMPILED".to_string(),
         score: 100.0,
         max_score: 100.0,
@@ -315,6 +331,6 @@ fn test_reporting_json_and_csv() {
     assert!(csv_path.exists());
 
     let csv_content = std::fs::read_to_string(csv_path).unwrap();
-    assert!(csv_content.contains("student_name,lab_number,submission_time,zip_filename"));
-    assert!(csv_content.contains("TestStudent,Lab1,14-11-2026 18:00,test.zip,COMPILED,100.00,100.00,100.00,5,5,120,All Tests Passed"));
+    assert!(csv_content.contains("student_name,section,lab_number,submission_time,zip_filename"));
+    assert!(csv_content.contains("TestStudent,Section_A,Lab1,14-11-2026 18:00,test.zip,COMPILED,100.00,100.00,100.00,5,5,120,All Tests Passed"));
 }

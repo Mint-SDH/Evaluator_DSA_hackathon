@@ -41,13 +41,28 @@ c-autograder/
 │
 └── workspace/                       # Runtime Grading Directory
     ├── .temp_sandbox/               # Ephemeral sandbox (Auto-created & cleaned up)
-    ├── submissions_zip/             # INPUT: Student .zip archives (STRICT READ-ONLY, NEVER modified)
+    ├── submissions_zip/             # INPUT: Multi-Section Student .zip folders (STRICT READ-ONLY)
+    │   ├── Section_A/
+    │   │   ├── student1.zip
+    │   │   └── student2.zip
+    │   └── Section_B/
+    │       ├── student3.zip
+    │       └── student4.zip
+    │
     ├── testcases.json               # INPUT: Test suite configuration and expected outputs
     └── output/                      # OUTPUT: Evaluation artifacts
-        ├── master_report.csv        # Comprehensive CSV summary for all submissions
-        └── student_reports/         # Detailed individual JSON breakdown per submission
-            ├── PES2UG23CS001_StudentA_Lab1_Sub1_report.json
-            └── ...
+        ├── csv_reports/             # 1 CSV generated per section
+        │   ├── Section_A.csv        # (student_name, total_test_cases, passed_test_cases, percentage_marks)
+        │   ├── Section_B.csv
+        │   └── master_report.csv    # Master overview across all sections
+        │
+        └── student_reports/         # Segregated detailed JSON breakdown per submission
+            ├── Section_A/
+            │   ├── student1_report.json
+            │   └── ...
+            └── Section_B/
+                ├── student3_report.json
+                └── ...
 ```
 
 ---

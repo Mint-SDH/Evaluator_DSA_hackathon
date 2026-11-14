@@ -1,7 +1,9 @@
 use c_autograder::compiler;
 use c_autograder::config::CliArgs;
 use c_autograder::extractor;
-use c_autograder::models::{IndividualReport, MasterSummaryRow, TestCaseResult, TestSuite};
+use c_autograder::models::{
+    IndividualReport, MasterSummaryRow, SectionSummaryRow, TestCaseResult, TestSuite,
+};
 use c_autograder::platform;
 use c_autograder::reporter;
 use c_autograder::runner;
@@ -9,9 +11,16 @@ use c_autograder::runner;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// Represents a discovered student submission tagged with its section/class folder.
+struct SubmissionTarget {
+    section_name: String,
+    zip_path: PathBuf,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     platform::init_platform();
@@ -65,7 +74,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     test_suite.lab_number = resolved_base_lab.clone();
 
     let problem_id = test_suite.problem_id.clone();
-    let display_lab = resolved_base_lab.as_deref().unwrap_or("Inferred from Submissions");
+    let display_lab = resolved_base_lab
+        .as_deref()
+        .unwrap_or("Inferred from Submissions");
     let total_tests_count = test_suite.test_cases.len();
 
     println!("Loaded Test Suite:");
@@ -80,9 +91,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = &cli.output_dir;
     let sandbox_dir = output_dir.join(".temp_sandbox");
     let student_reports_dir = output_dir.join("student_reports");
+    let csv_reports_dir = output_dir.join("csv_reports");
 
     std::fs::create_dir_all(&sandbox_dir)?;
     std::fs::create_dir_all(&student_reports_dir)?;
+    std::fs::create_dir_all(&csv_reports_dir)?;
 
     // 4. Configure Rayon thread pool if specified
     if let Some(jobs) = cli.jobs {
@@ -92,31 +105,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or_else(|e| eprintln!("Warning: Rayon thread pool already configured: {e}"));
         println!("  Workers:     {} parallel threads", jobs);
     } else {
-        println!("  Workers:     {} parallel threads (system cores)", rayon::current_num_threads());
+        println!(
+            "  Workers:     {} parallel threads (system cores)",
+            rayon::current_num_threads()
+        );
     }
 
-    // 5. Discover student .zip files (read-only discovery)
-    let mut zip_files: Vec<PathBuf> = Vec::new();
-    for entry in std::fs::read_dir(&cli.zips_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                if ext.eq_ignore_ascii_case("zip") {
-                    zip_files.push(path);
-                }
-            }
-        }
-    }
+    // 5. Discover student .zip files across section subdirectories or root folder
+    let targets = discover_submission_targets(&cli.zips_dir)?;
+    let total_submissions = targets.len();
 
-    let total_submissions = zip_files.len();
     if total_submissions == 0 {
-        println!("\nNo .zip archives found in '{}'. Exiting.", cli.zips_dir.display());
+        println!(
+            "\nNo .zip archives found in '{}'. Exiting.",
+            cli.zips_dir.display()
+        );
         let _ = platform::robust_remove_path(&sandbox_dir);
         return Ok(());
     }
 
-    println!("\nDiscovered {} submission archives. Commencing parallel evaluation...\n", total_submissions);
+    let unique_sections: HashSet<_> = targets.iter().map(|t| &t.section_name).collect();
+    println!(
+        "\nDiscovered {} submission archives across {} sections/classes. Commencing parallel evaluation...\n",
+        total_submissions,
+        unique_sections.len()
+    );
 
     // 6. Setup progress bar
     let pb = ProgressBar::new(total_submissions as u64);
@@ -127,17 +140,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .progress_chars("#>-"),
     );
 
-    // 7. Parallel Evaluation Pipeline
-    let mut summary_rows: Vec<MasterSummaryRow> = zip_files
+    // 7. Parallel Evaluation Pipeline across all sections
+    let evaluated_results: Vec<(String, MasterSummaryRow, SectionSummaryRow)> = targets
         .par_iter()
-        .map(|zip_path| {
-            let zip_stem = zip_path
+        .map(|target| {
+            let zip_stem = target
+                .zip_path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
-            let row = evaluate_single_submission(
-                zip_path,
+            let (master_row, section_row) = evaluate_single_submission(
+                target,
                 &zip_stem,
                 &sandbox_dir,
                 output_dir,
@@ -146,34 +160,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             pb.inc(1);
-            pb.set_message(format!("Evaluated {}", row.student_name));
-            row
+            pb.set_message(format!("[{}] {}", target.section_name, master_row.student_name));
+            (target.section_name.clone(), master_row, section_row)
         })
         .collect();
 
     pb.finish_with_message("Batch evaluation finished!");
 
-    // 8. Sort summary rows by student_name then submission_time
-    summary_rows.sort_by(|a, b| {
-        a.student_name
-            .cmp(&b.student_name)
+    // 8. Segregate results by section and generate 1 CSV per section
+    let mut section_map: BTreeMap<String, Vec<SectionSummaryRow>> = BTreeMap::new();
+    let mut master_rows: Vec<MasterSummaryRow> = Vec::with_capacity(evaluated_results.len());
+
+    for (section_name, master_row, section_row) in evaluated_results {
+        section_map
+            .entry(section_name)
+            .or_default()
+            .push(section_row);
+        master_rows.push(master_row);
+    }
+
+    println!("\nGenerating section CSV reports in '{}'...", csv_reports_dir.display());
+    for (section_name, mut section_rows) in section_map {
+        // Sort each section's CSV alphabetically by student_name
+        section_rows.sort_by(|a, b| a.student_name.cmp(&b.student_name));
+        let section_csv = reporter::write_section_csv(output_dir, &section_name, &section_rows)?;
+        println!(
+            "  - {} ({} submissions) -> {}",
+            section_name,
+            section_rows.len(),
+            section_csv.display()
+        );
+    }
+
+    // 9. Write Master Combined CSV Report
+    master_rows.sort_by(|a, b| {
+        a.section
+            .cmp(&b.section)
+            .then_with(|| a.student_name.cmp(&b.student_name))
             .then_with(|| a.submission_time.cmp(&b.submission_time))
     });
-
-    // 9. Write Master CSV Report
-    let master_csv_path = reporter::write_master_csv(output_dir, &summary_rows)?;
+    let master_csv_path = reporter::write_master_csv(output_dir, &master_rows)?;
 
     // 10. Clean up empty sandbox directory
     let _ = platform::robust_remove_path(&sandbox_dir);
 
     // 11. Final Summary Statistics
     let elapsed = start_time.elapsed();
-    let compiled_count = summary_rows.iter().filter(|r| r.status == "COMPILED").count();
-    let perfect_count = summary_rows
+    let compiled_count = master_rows.iter().filter(|r| r.status == "COMPILED").count();
+    let perfect_count = master_rows
         .iter()
         .filter(|r| r.status == "COMPILED" && r.percentage >= 100.0)
         .count();
-    let total_score_sum: f64 = summary_rows.iter().map(|r| r.score).sum();
+    let total_score_sum: f64 = master_rows.iter().map(|r| r.score).sum();
     let avg_score = if total_submissions > 0 {
         total_score_sum / (total_submissions as f64)
     } else {
@@ -183,27 +221,98 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n============================================================");
     println!("                  EVALUATION COMPLETE                       ");
     println!("============================================================");
-    println!("Total Submissions:     {}", total_submissions);
-    println!("Successfully Compiled: {} ({:.1}%)", compiled_count, (compiled_count as f64 / total_submissions as f64) * 100.0);
+    println!("Total Submissions:     {} across {} sections", total_submissions, unique_sections.len());
+    println!(
+        "Successfully Compiled: {} ({:.1}%)",
+        compiled_count,
+        (compiled_count as f64 / total_submissions as f64) * 100.0
+    );
     println!("Perfect Scores (100%): {}", perfect_count);
-    println!("Average Score:         {:.2}", avg_score);
+    println!("Average Score:         {:.2}%", avg_score);
     println!("Total Execution Time:  {:.2?}", elapsed);
-    println!("Master Report CSV:     {}", master_csv_path.display());
-    println!("Individual Reports:    {}", student_reports_dir.display());
+    println!("Section CSV Reports:   {}", csv_reports_dir.display());
+    println!("Detailed Student JSON: {} (segregated by section)", student_reports_dir.display());
+    println!("Master Combined CSV:   {}", master_csv_path.display());
     println!("============================================================");
 
     Ok(())
 }
 
-/// Evaluates a single student submission and immediately cleans up the ephemeral extraction directory.
+/// Discovers submission .zip archives, supporting:
+/// 1. Section subdirectories: submissions_zip/<Section_Name>/<student>.zip
+/// 2. Root directory zips: submissions_zip/<student>.zip
+fn discover_submission_targets(zips_dir: &Path) -> Result<Vec<SubmissionTarget>, Box<dyn std::error::Error>> {
+    let mut targets = Vec::new();
+    let mut root_zips = Vec::new();
+
+    for entry in std::fs::read_dir(zips_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let section_name = entry.file_name().to_string_lossy().to_string();
+            // Ignore hidden directories like .git or .temp_sandbox
+            if section_name.starts_with('.') {
+                continue;
+            }
+            for sub_entry in std::fs::read_dir(&path)? {
+                let sub_entry = sub_entry?;
+                let sub_path = sub_entry.path();
+                if sub_path.is_file() {
+                    if let Some(ext) = sub_path.extension().and_then(|s| s.to_str()) {
+                        if ext.eq_ignore_ascii_case("zip") {
+                            targets.push(SubmissionTarget {
+                                section_name: section_name.clone(),
+                                zip_path: sub_path,
+                            });
+                        }
+                    }
+                }
+            }
+        } else if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext.eq_ignore_ascii_case("zip") {
+                    root_zips.push(path);
+                }
+            }
+        }
+    }
+
+    // If zips are placed directly in zips_dir, group them under the folder's name
+    if !root_zips.is_empty() {
+        let default_section = zips_dir
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "submissions".to_string());
+        for zip in root_zips {
+            targets.push(SubmissionTarget {
+                section_name: default_section.clone(),
+                zip_path: zip,
+            });
+        }
+    }
+
+    targets.sort_by(|a, b| {
+        a.section_name
+            .cmp(&b.section_name)
+            .then_with(|| a.zip_path.cmp(&b.zip_path))
+    });
+
+    Ok(targets)
+}
+
+/// Evaluates a single student submission, writes its detailed report into the section folder,
+/// and immediately cleans up the ephemeral extraction directory.
 fn evaluate_single_submission(
-    zip_path: &Path,
+    target: &SubmissionTarget,
     zip_stem: &str,
     sandbox_dir: &Path,
     output_dir: &Path,
     test_suite: &TestSuite,
     base_lab: Option<&str>,
-) -> MasterSummaryRow {
+) -> (MasterSummaryRow, SectionSummaryRow) {
+    let zip_path = &target.zip_path;
+    let section_name = &target.section_name;
+
     // 1. Read-only extraction into sandbox (enforces 4-tier lab_number resolution)
     let extraction_res = extractor::extract_submission(zip_path, sandbox_dir, base_lab);
 
@@ -215,11 +324,13 @@ fn evaluate_single_submission(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown.zip".to_string());
             let fallback_lab = extractor::resolve_lab_number(base_lab, None, zip_stem);
-            return MasterSummaryRow {
+
+            let master_row = MasterSummaryRow {
                 student_name: zip_stem.to_string(),
                 lab_number: fallback_lab,
                 submission_time: "N/A".to_string(),
                 zip_filename: filename,
+                section: Some(section_name.clone()),
                 status: "EXTRACTION_FAILED".to_string(),
                 score: 0.0,
                 max_score: 0.0,
@@ -229,6 +340,15 @@ fn evaluate_single_submission(
                 execution_time_total_ms: 0,
                 notes: format!("Extraction Error: {e}"),
             };
+
+            let section_row = SectionSummaryRow {
+                student_name: zip_stem.to_string(),
+                total_test_cases: test_suite.test_cases.len(),
+                passed_test_cases: 0,
+                percentage_marks: 0,
+            };
+
+            return (master_row, section_row);
         }
     };
 
@@ -237,7 +357,7 @@ fn evaluate_single_submission(
     // 2. Cross-platform C Compilation
     let compilation_res = compiler::compile_submission(&extracted.work_dir);
 
-    let (individual_report, summary_row) = match compilation_res {
+    let (individual_report, master_row, section_row) = match compilation_res {
         Ok(bin_path) => {
             // 3. Execution & Testing
             let (results, total_score, max_score, passed_count, total_time_ms) =
@@ -256,6 +376,7 @@ fn evaluate_single_submission(
                 lab_number: metadata.lab_number.clone(),
                 submission_time: metadata.submission_time.clone(),
                 zip_filename: metadata.zip_filename.clone(),
+                section: Some(section_name.clone()),
                 problem_id: test_suite.problem_id.clone(),
                 compiled: true,
                 compilation_error: None,
@@ -272,6 +393,7 @@ fn evaluate_single_submission(
                 lab_number: metadata.lab_number.clone(),
                 submission_time: metadata.submission_time.clone(),
                 zip_filename: metadata.zip_filename.clone(),
+                section: Some(section_name.clone()),
                 status: "COMPILED".to_string(),
                 score: total_score,
                 max_score,
@@ -282,7 +404,20 @@ fn evaluate_single_submission(
                 notes,
             };
 
-            (report, row)
+            let integer_percentage = if test_suite.test_cases.is_empty() {
+                0
+            } else {
+                ((passed_count as f64 / test_suite.test_cases.len() as f64) * 100.0).round() as u64
+            };
+
+            let sec_row = SectionSummaryRow {
+                student_name: zip_stem.to_string(), // name of the zip folder
+                total_test_cases: test_suite.test_cases.len(),
+                passed_test_cases: passed_count,
+                percentage_marks: integer_percentage,
+            };
+
+            (report, row, sec_row)
         }
         Err(err_msg) => {
             // Compilation failed
@@ -310,6 +445,7 @@ fn evaluate_single_submission(
                 lab_number: metadata.lab_number.clone(),
                 submission_time: metadata.submission_time.clone(),
                 zip_filename: metadata.zip_filename.clone(),
+                section: Some(section_name.clone()),
                 problem_id: test_suite.problem_id.clone(),
                 compiled: false,
                 compilation_error: Some(err_msg.clone()),
@@ -328,6 +464,7 @@ fn evaluate_single_submission(
                 lab_number: metadata.lab_number.clone(),
                 submission_time: metadata.submission_time.clone(),
                 zip_filename: metadata.zip_filename.clone(),
+                section: Some(section_name.clone()),
                 status: "COMPILATION_ERROR".to_string(),
                 score: 0.0,
                 max_score: max_possible_score,
@@ -338,23 +475,28 @@ fn evaluate_single_submission(
                 notes: note,
             };
 
-            (report, row)
+            let sec_row = SectionSummaryRow {
+                student_name: zip_stem.to_string(),
+                total_test_cases: test_suite.test_cases.len(),
+                passed_test_cases: 0,
+                percentage_marks: 0,
+            };
+
+            (report, row, sec_row)
         }
     };
 
-    // 4. Write Individual JSON Report
-    let _ = reporter::write_student_report(output_dir, &individual_report, zip_stem);
+    // 4. Write Individual JSON Report segregated by section
+    let _ = reporter::write_student_report(output_dir, Some(section_name), &individual_report, zip_stem);
 
     // 5. CRITICAL: Immediately delete extracted folder and compiled binary
     // Uses platform::robust_cleanup with retry loop for Windows NTFS locking
     let _ = platform::robust_cleanup(extracted.temp_dir);
 
-    summary_row
+    (master_row, section_row)
 }
 
 /// Extracts a concise, informative compiler error line from GCC or make output.
-/// Prioritizes specific compiler errors (e.g. "trie.c:38: error: expected ';'") and linker errors
-/// (e.g. "process_text.c: undefined reference to 'word_to_lower'"), cleaning temporary sandbox paths.
 fn format_compilation_note(err_msg: &str) -> String {
     let mut specific_c_error = None;
     let mut undefined_ref_error = None;
@@ -421,11 +563,8 @@ fn format_compilation_note(err_msg: &str) -> String {
     "Compilation Failed".to_string()
 }
 
-/// Cleans temporary directory prefixes and GCC temp object prefixes from error strings so reports display cleanly,
-/// e.g. "C:\...\temp\4\process_text.c:38: error: ..." -> "process_text.c:38: error: ..."
-/// e.g. "C:\...\ccNxj6NU.o:process_text.c:...: undefined reference" -> "process_text.c:...: undefined reference"
+/// Cleans temporary directory prefixes and GCC temp object prefixes from error strings so reports display cleanly.
 fn clean_error_path(line: &str) -> String {
-    // Strip temporary object file prefix like ccNxj6NU.o:
     let line_cleaned = if let Some(idx) = line.find(".o:") {
         &line[idx + 3..]
     } else {
@@ -457,7 +596,6 @@ fn clean_error_path(line: &str) -> String {
 }
 
 /// Formats test execution notes distinguishing TLE, Crashes/Segfaults, and Wrong Answers.
-/// Example: "0/4 Tests Passed (4 TLE) | Failed: TC1(TLE), TC2(TLE), TC3(TLE), TC4(TLE)"
 fn format_test_run_notes(
     passed_count: usize,
     total_tests: usize,

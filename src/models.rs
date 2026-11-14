@@ -106,6 +106,8 @@ pub struct IndividualReport {
     pub lab_number: String,
     pub submission_time: String,
     pub zip_filename: String,
+    #[serde(default)]
+    pub section: Option<String>,
     pub problem_id: String,
     pub compiled: bool,
     pub compilation_error: Option<String>,
@@ -124,6 +126,8 @@ pub struct MasterSummaryRow {
     pub lab_number: String,
     pub submission_time: String,
     pub zip_filename: String,
+    #[serde(default)]
+    pub section: Option<String>,
     pub status: String,
     pub score: f64,
     pub max_score: f64,
@@ -132,4 +136,14 @@ pub struct MasterSummaryRow {
     pub total_tests: usize,
     pub execution_time_total_ms: u128,
     pub notes: String,
+}
+
+/// Section-level CSV summary row containing only:
+/// student_name, total_test_cases, passed_test_cases, percentage_marks (integer)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SectionSummaryRow {
+    pub student_name: String,
+    pub total_test_cases: usize,
+    pub passed_test_cases: usize,
+    pub percentage_marks: u64,
 }

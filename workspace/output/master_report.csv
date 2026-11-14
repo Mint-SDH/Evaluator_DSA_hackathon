@@ -1,7 +1,7 @@
-student_name,lab_number,submission_time,zip_filename,status,score,max_score,percentage,passed_tests,total_tests,execution_time_total_ms,notes
-PES2UG23CS001_StudentA,LabSpecial,14-11-2026 20:05,PES2UG23CS001_StudentA_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,455,All Tests Passed
-PES2UG23CS002_StudentB,LabSpecial,14-11-2026 20:05,PES2UG23CS002_StudentB_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,476,All Tests Passed
-PES2UG23CS003_StudentC,LabSpecial,14-11-2026 20:05,PES2UG23CS003_StudentC_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,512,All Tests Passed
-PES2UG23CS004_StudentD,LabSpecial,14-11-2026 20:05,PES2UG23CS004_StudentD_Lab1_Sub1.zip,COMPILATION_ERROR,0.00,100.00,0.00,0,4,0,Compilation Failed: process_text.c:(.text+0x27): undefined reference to `word_to_lower'
-PES2UG23CS005_StudentE,LabSpecial,14-11-2026 20:05,PES2UG23CS005_StudentE_Lab1_Sub1.zip,COMPILED,0.00,100.00,0.00,0,4,8231,"0/4 Tests Passed (4 TLE) | Failed: TC1(TLE), TC2(TLE), TC3(TLE), TC4(TLE)"
-PES2UG23CS006_StudentF,LabSpecial,14-11-2026 20:05,PES2UG23CS006_StudentF_Lab1_Sub1.zip,COMPILED,0.00,100.00,0.00,0,4,431,"0/4 Tests Passed (4 Crash) | Failed: TC1(Segfault), TC2(Segfault), TC3(Segfault), TC4(Segfault)"
+student_name,section,lab_number,submission_time,zip_filename,status,score,max_score,percentage,passed_tests,total_tests,execution_time_total_ms,notes
+PES2UG23CS001_StudentA,Section_A,Lab2,14-11-2026 20:05,PES2UG23CS001_StudentA_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,469,All Tests Passed
+PES2UG23CS002_StudentB,Section_A,Lab2,14-11-2026 20:05,PES2UG23CS002_StudentB_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,498,All Tests Passed
+PES2UG23CS003_StudentC,Section_A,Lab2,14-11-2026 20:05,PES2UG23CS003_StudentC_Lab1_Sub1.zip,COMPILED,100.00,100.00,100.00,4,4,438,All Tests Passed
+PES2UG23CS004_StudentD,Section_B,Lab2,14-11-2026 20:05,PES2UG23CS004_StudentD_Lab1_Sub1.zip,COMPILATION_ERROR,0.00,100.00,0.00,0,4,0,Compilation Failed: process_text.c:(.text+0x27): undefined reference to `word_to_lower'
+PES2UG23CS005_StudentE,Section_B,Lab2,14-11-2026 20:05,PES2UG23CS005_StudentE_Lab1_Sub1.zip,COMPILED,0.00,100.00,0.00,0,4,8473,"0/4 Tests Passed (4 TLE) | Failed: TC1(TLE), TC2(TLE), TC3(TLE), TC4(TLE)"
+PES2UG23CS006_StudentF,Section_B,Lab2,14-11-2026 20:05,PES2UG23CS006_StudentF_Lab1_Sub1.zip,COMPILED,0.00,100.00,0.00,0,4,561,"0/4 Tests Passed (4 Crash) | Failed: TC1(Segfault), TC2(Segfault), TC3(Segfault), TC4(Segfault)"
