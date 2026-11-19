@@ -3,9 +3,139 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-/// Writes the detailed JSON report for a single student submission, segregated by section.
-/// Reports are saved in <output_dir>/student_reports/<section_name>/<zip_stem>_report.json
-/// (or <output_dir>/student_reports/<zip_stem>_report.json if no section).
+/// Generates a clean, comprehensive text report for an individual student submission.
+/// Includes student metadata, compilation details, a test summary table, and at the bottom,
+/// the full outputs (actual stdout, expected stdout, and stderr) for all test cases.
+pub fn generate_student_txt_report(report: &IndividualReport) -> String {
+    let mut out = String::new();
+    out.push_str("================================================================================\n");
+    out.push_str("                       INDIVIDUAL STUDENT EVALUATION REPORT                     \n");
+    out.push_str("================================================================================\n");
+    out.push_str(&format!("Student Name       : {}\n", report.student_name));
+    out.push_str(&format!("Section            : {}\n", report.section.as_deref().unwrap_or("Default")));
+    out.push_str(&format!("Lab Number         : {}\n", report.lab_number));
+    out.push_str(&format!("Problem ID         : {}\n", report.problem_id));
+    out.push_str(&format!("Zip File           : {}\n", report.zip_filename));
+    out.push_str(&format!("Submission Time    : {}\n", report.submission_time));
+    out.push_str(&format!("Compilation Status : {}\n", if report.compiled { "SUCCESS" } else { "FAILED" }));
+    out.push_str(&format!("Score              : {:.2} / {:.2} ({:.2}%)\n", report.total_score, report.max_score, report.percentage));
+    out.push_str(&format!("Passed Test Cases  : {} / {}\n", report.tests_passed, report.total_tests));
+
+    let overall_verdict = if !report.compiled {
+        "COMPILATION ERROR"
+    } else if report.tests_passed == report.total_tests && report.total_tests > 0 {
+        "ACCEPTED (100%)"
+    } else if report.tests_passed > 0 {
+        "PARTIAL PASS"
+    } else {
+        "WRONG ANSWER (0%)"
+    };
+    out.push_str(&format!("Overall Verdict    : {}\n", overall_verdict));
+
+    if let Some(ref err) = report.compilation_error {
+        out.push_str("\n--------------------------------------------------------------------------------\n");
+        out.push_str("COMPILATION ERROR DETAILS\n");
+        out.push_str("--------------------------------------------------------------------------------\n");
+        out.push_str(err);
+        if !err.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+
+    out.push_str("\n--------------------------------------------------------------------------------\n");
+    out.push_str("TEST CASES SUMMARY\n");
+    out.push_str("--------------------------------------------------------------------------------\n");
+    if report.results.is_empty() {
+        out.push_str("(No test cases executed)\n");
+    } else {
+        for (idx, tc) in report.results.iter().enumerate() {
+            let status = if tc.passed { "PASSED" } else { "FAILED" };
+            let note_suffix = if let Some(ref note) = tc.error_message {
+                format!(" [{}]", note)
+            } else {
+                String::new()
+            };
+            out.push_str(&format!(
+                "[{:>2}] TC #{}: {:<32} | Status: {:<6} | Score: {:>5.1}/{:<5.1} | Time: {:>4}ms | Verdict: {}{}\n",
+                idx + 1,
+                tc.test_case_id,
+                tc.test_case_name,
+                status,
+                tc.score,
+                tc.max_score,
+                tc.execution_time_ms,
+                tc.verdict,
+                note_suffix
+            ));
+        }
+    }
+
+    out.push_str("\n================================================================================\n");
+    out.push_str("                         ALL TEST CASE TERMINAL OUTPUTS                         \n");
+    out.push_str("================================================================================\n");
+
+    if report.results.is_empty() {
+        out.push_str("(No test case outputs available)\n");
+    } else {
+        for (idx, tc) in report.results.iter().enumerate() {
+            out.push_str(&format!(
+                "\n--------------------------------------------------------------------------------\n\
+                 >>> TEST CASE {} (ID: {}): {}\n\
+                 Status: {} | Verdict: {} | Score: {:.1}/{:.1} | Time: {}ms\n",
+                idx + 1,
+                tc.test_case_id,
+                tc.test_case_name,
+                if tc.passed { "PASSED" } else { "FAILED" },
+                tc.verdict,
+                tc.score,
+                tc.max_score,
+                tc.execution_time_ms
+            ));
+            if let Some(ref note) = tc.error_message {
+                out.push_str(&format!("Evaluation Note: {}\n", note));
+            }
+            out.push_str("--------------------------------------------------------------------------------\n");
+
+            out.push_str("--- ACTUAL TERMINAL OUTPUT ---\n");
+            if tc.actual_stdout.trim().is_empty() {
+                out.push_str("(No stdout output produced)\n");
+            } else {
+                out.push_str(&tc.actual_stdout);
+                if !tc.actual_stdout.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+
+            out.push_str("\n--- EXPECTED TERMINAL OUTPUT ---\n");
+            if tc.expected_stdout.trim().is_empty() {
+                out.push_str("(No stdout expected)\n");
+            } else {
+                out.push_str(&tc.expected_stdout);
+                if !tc.expected_stdout.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+
+            if !tc.stderr.trim().is_empty() {
+                out.push_str("\n--- STDERR / ERROR ---\n");
+                out.push_str(&tc.stderr);
+                if !tc.stderr.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+        }
+    }
+
+    out.push_str("\n================================================================================\n");
+    out.push_str("                            END OF REPORT                                       \n");
+    out.push_str("================================================================================\n");
+
+    out
+}
+
+/// Writes the detailed .txt report for a single student submission, segregated by section.
+/// Reports are saved in <output_dir>/student_reports/<section_name>/<zip_stem>_report.txt
+/// (or <output_dir>/student_reports/<zip_stem>_report.txt if no section).
 pub fn write_student_report(
     output_dir: &Path,
     section_name: Option<&str>,
@@ -23,22 +153,21 @@ pub fn write_student_report(
         std::fs::create_dir_all(&target_dir)?;
     }
 
-    let report_filename = format!("{zip_stem}_report.json");
-    let report_path = target_dir.join(report_filename);
+    // Generate and write the comprehensive .txt report (only .txt format as requested)
+    let txt_filename = format!("{zip_stem}_report.txt");
+    let txt_path = target_dir.join(txt_filename);
+    let txt_content = generate_student_txt_report(report);
 
-    let json_content = serde_json::to_string_pretty(report)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let mut txt_file = File::create(&txt_path)?;
+    txt_file.write_all(txt_content.as_bytes())?;
+    txt_file.flush()?;
 
-    let mut file = File::create(&report_path)?;
-    file.write_all(json_content.as_bytes())?;
-    file.flush()?;
-
-    Ok(report_path)
+    Ok(txt_path)
 }
 
 /// Writes the section CSV report inside <output_dir>/csv_reports/<section_name>.csv
-/// The ONLY entries are:
-/// student_name, total_test_cases, passed_test_cases, percentage_marks (integer)
+/// Columns:
+/// student_name, total_test_cases, passed_test_cases, percentage_marks, scaled_down, fixed_marks, aloted_marks
 pub fn write_section_csv(
     output_dir: &Path,
     section_name: &str,
@@ -55,13 +184,16 @@ pub fn write_section_csv(
 
     let mut writer = csv::Writer::from_writer(file);
 
-    // Exact required columns:
-    // student_name (i.e. name of the zip folder), total test cases, how many passed, integer % marks
+    // Required columns:
+    // student_name, total_test_cases, passed_test_cases, percentage_marks, scaled_down, fixed_marks, aloted_marks
     writer.write_record([
         "student_name",
         "total_test_cases",
         "passed_test_cases",
         "percentage_marks",
+        "scaled_down",
+        "fixed_marks",
+        "aloted_marks",
     ])?;
 
     for row in rows {
@@ -70,6 +202,9 @@ pub fn write_section_csv(
             &row.total_test_cases.to_string(),
             &row.passed_test_cases.to_string(),
             &row.percentage_marks.to_string(),
+            &row.scaled_down.to_string(),
+            &row.fixed_marks.to_string(),
+            &row.aloted_marks.to_string(),
         ])?;
     }
 
@@ -97,21 +232,23 @@ pub fn write_master_csv(
 
     let mut writer = csv::Writer::from_writer(file);
 
-    writer.write_record([
+    let headers = [
         "student_name",
         "section",
         "lab_number",
         "submission_time",
         "zip_filename",
         "status",
-        "score",
-        "max_score",
-        "percentage",
         "passed_tests",
         "total_tests",
         "execution_time_total_ms",
         "notes",
-    ])?;
+        "scaled_down",
+        "fixed_marks",
+        "aloted_marks",
+    ];
+
+    writer.write_record(&headers)?;
 
     for row in rows {
         writer.write_record(&[
@@ -121,13 +258,13 @@ pub fn write_master_csv(
             &row.submission_time,
             &row.zip_filename,
             &row.status,
-            &format!("{:.2}", row.score),
-            &format!("{:.2}", row.max_score),
-            &format!("{:.2}", row.percentage),
             &row.passed_tests.to_string(),
             &row.total_tests.to_string(),
             &row.execution_time_total_ms.to_string(),
             &row.notes,
+            &row.scaled_down.to_string(),
+            &row.fixed_marks.to_string(),
+            &row.aloted_marks.to_string(),
         ])?;
     }
 
@@ -137,21 +274,7 @@ pub fn write_master_csv(
     let root_csv = output_dir.join("master_report.csv");
     if let Ok((root_file, _)) = open_csv_resiliently(output_dir, &root_csv) {
         let mut root_writer = csv::Writer::from_writer(root_file);
-        let _ = root_writer.write_record([
-            "student_name",
-            "section",
-            "lab_number",
-            "submission_time",
-            "zip_filename",
-            "status",
-            "score",
-            "max_score",
-            "percentage",
-            "passed_tests",
-            "total_tests",
-            "execution_time_total_ms",
-            "notes",
-        ]);
+        let _ = root_writer.write_record(&headers);
         for row in rows {
             let _ = root_writer.write_record(&[
                 &row.student_name,
@@ -160,13 +283,13 @@ pub fn write_master_csv(
                 &row.submission_time,
                 &row.zip_filename,
                 &row.status,
-                &format!("{:.2}", row.score),
-                &format!("{:.2}", row.max_score),
-                &format!("{:.2}", row.percentage),
                 &row.passed_tests.to_string(),
                 &row.total_tests.to_string(),
                 &row.execution_time_total_ms.to_string(),
                 &row.notes,
+                &row.scaled_down.to_string(),
+                &row.fixed_marks.to_string(),
+                &row.aloted_marks.to_string(),
             ]);
         }
         let _ = root_writer.flush();

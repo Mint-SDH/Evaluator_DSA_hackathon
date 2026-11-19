@@ -111,8 +111,8 @@ pub fn robust_cleanup(temp_dir: tempfile::TempDir) -> std::io::Result<()> {
     // First attempt to close the TempDir normally
     let close_result = temp_dir.close();
 
-    // If close() reported an error or the path still exists on disk, run retry loop
-    if close_result.is_err() || path.exists() {
+    // Only if close() reported an error (e.g. temporary Windows file lock), run retry loop
+    if close_result.is_err() {
         robust_remove_path(&path)?;
     }
 

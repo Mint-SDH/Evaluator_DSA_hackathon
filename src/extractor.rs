@@ -1,6 +1,6 @@
 use crate::models::StudentMetadata;
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Write};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -83,6 +83,15 @@ pub fn extract_submission(
             continue;
         }
 
+        // Fast disk I/O optimization: Skip pre-compiled binaries and object files bundled in zip
+        // This avoids writing megabytes of stale binaries to disk only to delete them later.
+        if let Some(ext) = enclosed.extension().and_then(|s| s.to_str()) {
+            let ext_lower = ext.to_ascii_lowercase();
+            if ext_lower == "o" || ext_lower == "obj" || ext_lower == "exe" || ext_lower == "out" || ext_lower == "bin" {
+                continue;
+            }
+        }
+
         let out_path = target_root.join(&enclosed);
 
         if file.is_dir() {
@@ -93,8 +102,10 @@ pub fn extract_submission(
                     std::fs::create_dir_all(parent)?;
                 }
             }
-            let mut outfile = File::create(&out_path)?;
-            io::copy(&mut file, &mut outfile)?;
+            let outfile = File::create(&out_path)?;
+            let mut writer = io::BufWriter::with_capacity(64 * 1024, outfile);
+            io::copy(&mut file, &mut writer)?;
+            writer.flush()?;
 
             #[cfg(unix)]
             {
@@ -226,25 +237,42 @@ fn extract_submission_timestamp<R: io::Read + io::Seek>(
     }
 }
 
-/// Searches the extracted directory hierarchy to locate the best directory to compile:
-/// 1. Directory containing client.c (primary driver)
-/// 2. Directory containing main.c
-/// 3. Directory with the greatest count of .c source files
-/// 4. Root extracted directory as fallback
+/// Searches the extracted directory hierarchy using a brute-force approach to locate
+/// the best directory to compile:
+/// 1. Priority 1 (Brute-force Makefile Search): Any folder containing a valid makefile
+///    (case-insensitive: makefile, Makefile, GNUmakefile). If multiple exist, chooses the one
+///    that also contains C source files, or the shallowest directory.
+/// 2. Priority 2: Directory containing client.c (primary driver)
+/// 3. Priority 3: Directory containing main.c
+/// 4. Priority 4: Directory with the greatest count of .c source files
+/// 5. Root extracted directory as fallback
 fn locate_c_work_dir(root: &Path) -> PathBuf {
+    let mut makefile_dirs: Vec<PathBuf> = Vec::new();
     let mut dir_c_counts: std::collections::HashMap<PathBuf, usize> = std::collections::HashMap::new();
     let mut client_c_dir = None;
     let mut main_c_dir = None;
 
     for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let path_str = path.to_string_lossy();
+        if path_str.contains("__MACOSX") || path_str.contains("._") {
+            continue;
+        }
+
         if entry.file_type().is_file() {
-            let path = entry.path();
             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                 let lower = file_name.to_ascii_lowercase();
-                if lower == "client.c" {
+
+                // Check for Makefile (must be exact file name, e.g. makefile, not makefile.zip)
+                if lower == "makefile" || lower == "gnumakefile" {
+                    if let Some(parent) = path.parent() {
+                        makefile_dirs.push(parent.to_path_buf());
+                    }
+                }
+
+                if lower == "client.c" && client_c_dir.is_none() {
                     if let Some(parent) = path.parent() {
                         client_c_dir = Some(parent.to_path_buf());
-                        break;
                     }
                 } else if lower == "main.c" && main_c_dir.is_none() {
                     if let Some(parent) = path.parent() {
@@ -261,6 +289,20 @@ fn locate_c_work_dir(root: &Path) -> PathBuf {
         }
     }
 
+    // 1. If any Makefile is found, compile in its directory
+    if !makefile_dirs.is_empty() {
+        // Prioritize makefile directory that also contains C source files
+        for dir in &makefile_dirs {
+            if dir_c_counts.contains_key(dir) {
+                return dir.clone();
+            }
+        }
+        // Otherwise pick the shallowest directory containing a makefile
+        makefile_dirs.sort_by_key(|p| p.components().count());
+        return makefile_dirs[0].clone();
+    }
+
+    // 2. Fallbacks if no makefile found
     if let Some(dir) = client_c_dir {
         return dir;
     }

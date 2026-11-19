@@ -48,6 +48,8 @@ pub struct TestCase {
     #[serde(default)]
     pub input_files: HashMap<String, String>,
     pub expected_stdout: String,
+    #[serde(default)]
+    pub expected_regex: Option<String>,
     #[serde(default = "default_weight")]
     pub weight: f64,
 }
@@ -136,14 +138,20 @@ pub struct MasterSummaryRow {
     pub total_tests: usize,
     pub execution_time_total_ms: u128,
     pub notes: String,
+    pub scaled_down: u64,
+    pub fixed_marks: u64,
+    pub aloted_marks: u64,
 }
 
-/// Section-level CSV summary row containing only:
-/// student_name, total_test_cases, passed_test_cases, percentage_marks (integer)
+/// Section-level CSV summary row containing:
+/// student_name, total_test_cases, passed_test_cases, percentage_marks, scaled_down, fixed_marks, aloted_marks
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SectionSummaryRow {
     pub student_name: String,
     pub total_test_cases: usize,
     pub passed_test_cases: usize,
     pub percentage_marks: u64,
+    pub scaled_down: u64,
+    pub fixed_marks: u64,
+    pub aloted_marks: u64,
 }

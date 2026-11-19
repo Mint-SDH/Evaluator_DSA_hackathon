@@ -97,19 +97,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&student_reports_dir)?;
     std::fs::create_dir_all(&csv_reports_dir)?;
 
-    // 4. Configure Rayon thread pool if specified
-    if let Some(jobs) = cli.jobs {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(jobs)
-            .build_global()
-            .unwrap_or_else(|e| eprintln!("Warning: Rayon thread pool already configured: {e}"));
-        println!("  Workers:     {} parallel threads", jobs);
+    // 4. Configure high-performance Rayon thread pool to fully utilize hardware
+    let num_threads = if let Some(jobs) = cli.jobs {
+        jobs
     } else {
-        println!(
-            "  Workers:     {} parallel threads (system cores)",
-            rayon::current_num_threads()
-        );
-    }
+        let logical_cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(8);
+        // Optimize for hybrid process-spawning and I/O autograding workload:
+        // 2x logical cores prevents worker starvation while threads wait on external make/gcc processes
+        std::cmp::max(logical_cores * 2, 16)
+    };
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .unwrap_or_else(|e| eprintln!("Warning: Rayon thread pool already configured: {e}"));
+
+    println!(
+        "  Workers:     {} parallel worker threads (maximizing laptop CPU & I/O throughput)",
+        num_threads
+    );
 
     // 5. Discover student .zip files across section subdirectories or root folder
     let targets = discover_submission_targets(&cli.zips_dir)?;
@@ -231,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Average Score:         {:.2}%", avg_score);
     println!("Total Execution Time:  {:.2?}", elapsed);
     println!("Section CSV Reports:   {}", csv_reports_dir.display());
-    println!("Detailed Student JSON: {} (segregated by section)", student_reports_dir.display());
+    println!("Individual Student .txt Reports: {} (segregated by section)", student_reports_dir.display());
     println!("Master Combined CSV:   {}", master_csv_path.display());
     println!("============================================================");
 
@@ -325,6 +333,28 @@ fn evaluate_single_submission(
                 .unwrap_or_else(|| "unknown.zip".to_string());
             let fallback_lab = extractor::resolve_lab_number(base_lab, None, zip_stem);
 
+            let individual_report = IndividualReport {
+                student_name: zip_stem.to_string(),
+                lab_number: fallback_lab.clone(),
+                submission_time: "N/A".to_string(),
+                zip_filename: filename.clone(),
+                section: Some(section_name.clone()),
+                problem_id: test_suite.problem_id.clone(),
+                compiled: false,
+                compilation_error: Some(format!("Extraction Error: {e} (Archive could not be unpacked; verify that submission is a valid standard .zip archive and not a renamed .rar or invalid format)")),
+                total_score: 0.0,
+                max_score: 0.0,
+                percentage: 0.0,
+                tests_passed: 0,
+                total_tests: test_suite.test_cases.len(),
+                results: vec![],
+            };
+            let _ = reporter::write_student_report(output_dir, Some(section_name), &individual_report, zip_stem);
+
+            let scaled_down: u64 = 0;
+            let fixed_marks: u64 = 3;
+            let aloted_marks: u64 = scaled_down + fixed_marks;
+
             let master_row = MasterSummaryRow {
                 student_name: zip_stem.to_string(),
                 lab_number: fallback_lab,
@@ -339,6 +369,9 @@ fn evaluate_single_submission(
                 total_tests: test_suite.test_cases.len(),
                 execution_time_total_ms: 0,
                 notes: format!("Extraction Error: {e}"),
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             let section_row = SectionSummaryRow {
@@ -346,6 +379,9 @@ fn evaluate_single_submission(
                 total_test_cases: test_suite.test_cases.len(),
                 passed_test_cases: 0,
                 percentage_marks: 0,
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             return (master_row, section_row);
@@ -388,6 +424,10 @@ fn evaluate_single_submission(
                 results,
             };
 
+            let scaled_down: u64 = (passed_count as f64 / 2.0).ceil() as u64;
+            let fixed_marks: u64 = 3;
+            let aloted_marks: u64 = scaled_down + fixed_marks;
+
             let row = MasterSummaryRow {
                 student_name: metadata.student_name.clone(),
                 lab_number: metadata.lab_number.clone(),
@@ -402,6 +442,9 @@ fn evaluate_single_submission(
                 total_tests: test_suite.test_cases.len(),
                 execution_time_total_ms: total_time_ms,
                 notes,
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             let integer_percentage = if test_suite.test_cases.is_empty() {
@@ -415,6 +458,9 @@ fn evaluate_single_submission(
                 total_test_cases: test_suite.test_cases.len(),
                 passed_test_cases: passed_count,
                 percentage_marks: integer_percentage,
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             (report, row, sec_row)
@@ -459,6 +505,10 @@ fn evaluate_single_submission(
 
             let note = format_compilation_note(&err_msg);
 
+            let scaled_down: u64 = 0;
+            let fixed_marks: u64 = 3;
+            let aloted_marks: u64 = scaled_down + fixed_marks;
+
             let row = MasterSummaryRow {
                 student_name: metadata.student_name.clone(),
                 lab_number: metadata.lab_number.clone(),
@@ -473,6 +523,9 @@ fn evaluate_single_submission(
                 total_tests: test_suite.test_cases.len(),
                 execution_time_total_ms: 0,
                 notes: note,
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             let sec_row = SectionSummaryRow {
@@ -480,6 +533,9 @@ fn evaluate_single_submission(
                 total_test_cases: test_suite.test_cases.len(),
                 passed_test_cases: 0,
                 percentage_marks: 0,
+                scaled_down,
+                fixed_marks,
+                aloted_marks,
             };
 
             (report, row, sec_row)
